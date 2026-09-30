@@ -160,9 +160,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         u = urlparse(self.path)
-        if u.path == "/":
+        if not u.path.endswith("/api/check"):
+            # Works at / and under any prefix such as /isthistaken/
             return self.send(200, "text/html; charset=utf-8", PAGE)
-        if u.path == "/api/check":
+        if u.path.endswith("/api/check"):
             q = parse_qs(u.query)
             name = (q.get("name", [""])[0]).strip().lower().lstrip("@")
             kind = q.get("kind", ["domains"])[0]
@@ -175,7 +176,6 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     res = list(ex.map(lambda s: check_social(name, s), SOCIAL))
             return self.send(200, "application/json", json.dumps({"name": name, "results": res, "variants": variants(name)}))
-        self.send(404, "text/plain", "not found")
 
 
 PAGE = r"""<!doctype html>
@@ -212,6 +212,7 @@ a.row:hover{border-color:var(--ink)}a.row b{font-weight:500;overflow:hidden;text
 </div>
 <script>
 const $=id=>document.getElementById(id);
+const BASE=location.pathname.replace(/\/?$/,"/"); // works at / and /isthistaken
 const words={available:"available",taken:"taken",unknown:"unknown",manual:"check manually"};
 function render(el,items){el.innerHTML=items.map(r=>`<a class="row" href="${r.url}" target="_blank" rel="noopener"><b>${r.label}</b><span class="${r.state}">${words[r.state]||r.state}</span></a>`).join("")}
 function skeleton(el,n){el.innerHTML=Array(n).fill('<a class="row"><b>...</b><span class="loading">checking</span></a>').join("")}
@@ -219,7 +220,7 @@ async function run(name){
   $("err").textContent="";name=name.trim().replace(/^@/,"");if(!name)return;$("q").value=name;$("out").hidden=false;
   skeleton($("domains"),12);skeleton($("social"),10);$("dc").textContent=$("sc").textContent="";
   for(const [kind,el,cnt] of [["domains","domains","dc"],["social","social","sc"]]){
-    fetch(`/api/check?name=${encodeURIComponent(name)}&kind=${kind}`).then(r=>r.json()).then(d=>{
+    fetch(`${BASE}api/check?name=${encodeURIComponent(name)}&kind=${kind}`).then(r=>r.json()).then(d=>{
       if(d.error){$("err").textContent=d.error;$("out").hidden=true;return}
       render($(el),d.results);$(cnt).textContent=`${d.results.filter(r=>r.state==="available").length} available`;
       if(kind==="social")$("variants").innerHTML=d.variants.map(v=>`<button type="button" data-v="${v}">${v}</button>`).join("");
