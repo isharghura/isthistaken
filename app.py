@@ -188,7 +188,7 @@ PAGE = r"""<!doctype html>
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
 main{max-width:760px;margin:0 auto;padding:40px 20px 80px}
 h1{font-size:30px;margin:0 0 4px;letter-spacing:-.02em}p.sub{margin:0 0 24px;color:var(--mute)}
-form{display:flex;gap:8px}input{flex:1;font:inherit;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+form{display:flex;gap:8px;align-items:flex-start}textarea#q{flex:1;margin:0;resize:vertical;min-height:46px;font:inherit;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}input{flex:1;font:inherit;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
 button{font:inherit;padding:12px 20px;border:0;border-radius:8px;background:var(--ink);color:var(--bg);cursor:pointer}
 :focus-visible{outline:2px solid var(--yes);outline-offset:2px}
 h2{font-size:17px;margin:32px 0 8px;display:flex;justify-content:space-between;align-items:baseline}
@@ -206,7 +206,7 @@ textarea{width:100%;margin-top:10px;font:inherit;padding:10px;border:1px solid v
 </style></head><body><main>
 <h1>namecheck</h1>
 <p class="sub">One name, checked across domains, socials and package registries.</p>
-<form id="f"><input id="q" placeholder="selfishidiot" autocomplete="off" autofocus aria-label="Name to check"><button>Check</button></form>
+<form id="f"><textarea id="q" rows="1" placeholder="selfishidiot (or paste many: one per line or comma-separated)" autocomplete="off" autofocus aria-label="Names to check"></textarea><button>Check</button></form>
 <details id="bulk"><summary>Bulk finder: generate and filter many names</summary>
  <textarea id="seeds" rows="4" placeholder="One base word per line, e.g. cairn, detour, gleam, whylo"></textarea>
  <div class="opts"><label>TLDs <input id="tlds" value="com"></label>
@@ -240,20 +240,23 @@ async function run(name){
   }
 }
 
-$("go").addEventListener("click",async()=>{
-  const seeds=[...new Set($("seeds").value.toLowerCase().split(/[\s,]+/).map(w=>w.replace(/[^a-z0-9-]/g,"")).filter(Boolean))];
+const parseWords=t=>[...new Set(t.toLowerCase().split(/[\s,;]+/).map(w=>w.replace(/^@/,"").replace(/[^a-z0-9-]/g,"")).filter(Boolean))];
+async function runBulk(seeds,usePre,useSuf){
   const pre=["get","try","use","hey","meet","go"],suf=["hq","app","hub","labs","ly","io"];
-  let names=[];for(const w of seeds){names.push(w);if($("pre").checked)pre.forEach(a=>names.push(a+w));if($("suf").checked)suf.forEach(a=>names.push(w+a))}
+  let names=[];for(const w of seeds){names.push(w);if(usePre)pre.forEach(a=>names.push(a+w));if(useSuf)suf.forEach(a=>names.push(w+a))}
   names=[...new Set(names)];const tlds=$("tlds").value.replace(/\s/g,"")||"com";
   if(!names.length){$("prog").textContent="Add at least one base word.";return}
-  $("found").innerHTML="";let done=0,hits=0,i=0;
+  $("bulk").open=true;$("found").innerHTML="";let done=0,hits=0,i=0;
   const step=async()=>{while(i<names.length){const n=names[i++];
     try{const d=await (await fetch(`${BASE}api/check?name=${encodeURIComponent(n)}&kind=domains&tlds=${tlds}`)).json();
       (d.results||[]).filter(r=>r.state==="available").forEach(r=>{hits++;$("found").insertAdjacentHTML("beforeend",`<a class="row" href="${r.url}" target="_blank" rel="noopener"><b>${r.label}</b><span class="available">available</span></a>`)})}catch(e){}
     done++;$("prog").textContent=`Checked ${done} of ${names.length} names, ${hits} available domains found`}};
   await Promise.all([step(),step(),step(),step()]);$("prog").textContent+=" (done)";
-});
-$("f").addEventListener("submit",e=>{e.preventDefault();run($("q").value)});
+}
+$("go").addEventListener("click",()=>runBulk(parseWords($("seeds").value),$("pre").checked,$("suf").checked));
+$("q").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();$("f").requestSubmit()}});
+$("f").addEventListener("submit",e=>{e.preventDefault();const w=parseWords($("q").value);
+  if(w.length>1){$("seeds").value=w.join("\n");$("out").hidden=true;runBulk(w,false,false)}else if(w.length){run(w[0])}});
 $("variants").addEventListener("click",e=>{if(e.target.dataset.v)run(e.target.dataset.v)});
 </script></main></body></html>
 """
