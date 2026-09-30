@@ -172,7 +172,8 @@ class Handler(BaseHTTPRequestHandler):
             with ThreadPoolExecutor(max_workers=12) as ex:
                 if kind == "domains":
                     dn = name.replace("_", "").replace(".", "")
-                    res = list(ex.map(lambda t: check_domain(dn, t), dict.fromkeys(TLDS)))
+                    req = [t for t in q.get("tlds", [""])[0].lower().split(",") if re.fullmatch(r"[a-z]{2,10}", t)]
+                    res = list(ex.map(lambda t: check_domain(dn, t), dict.fromkeys(req or TLDS)))
                 else:
                     res = list(ex.map(lambda s: check_social(name, s), SOCIAL))
             return self.send(200, "application/json", json.dumps({"name": name, "results": res, "variants": variants(name)}))
@@ -197,11 +198,22 @@ a.row{display:flex;justify-content:space-between;gap:8px;padding:10px 12px;backg
 a.row:hover{border-color:var(--ink)}a.row b{font-weight:500;overflow:hidden;text-overflow:ellipsis}
 .available{color:var(--yes)}.taken{color:var(--no)}.unknown,.manual{color:var(--maybe)}.loading{color:var(--mute)}
 .chips{display:flex;flex-wrap:wrap;gap:6px}.chips button{padding:5px 10px;font-size:14px;background:var(--card);color:var(--ink);border:1px solid var(--line)}
+details{margin:18px 0;padding:12px 14px;background:var(--card);border:1px solid var(--line);border-radius:8px}summary{cursor:pointer}
+textarea{width:100%;margin-top:10px;font:inherit;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+.opts{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:10px 0;font-size:14px}.opts input[type=text],#tlds{width:140px;padding:6px 8px;font:inherit;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+.opts button{padding:8px 14px}
 .err{color:var(--maybe);margin-top:12px}.note{color:var(--mute);font-size:13px;margin-top:28px}
 </style></head><body><main>
 <h1>namecheck</h1>
 <p class="sub">One name, checked across domains, socials and package registries.</p>
 <form id="f"><input id="q" placeholder="selfishidiot" autocomplete="off" autofocus aria-label="Name to check"><button>Check</button></form>
+<details id="bulk"><summary>Bulk finder: generate and filter many names</summary>
+ <textarea id="seeds" rows="4" placeholder="One base word per line, e.g. cairn, detour, gleam, whylo"></textarea>
+ <div class="opts"><label>TLDs <input id="tlds" value="com"></label>
+ <label><input type="checkbox" id="pre" checked> prefixes (get, try, use, hey, meet, go)</label>
+ <label><input type="checkbox" id="suf" checked> suffixes (hq, app, hub, labs, ly, io)</label>
+ <button type="button" id="go">Find available</button></div>
+ <div id="prog" class="note"></div><div id="found" class="grid"></div></details>
 <div id="err" class="err"></div>
 <div id="out" hidden>
  <h2>Domains <small id="dc"></small></h2><div id="domains" class="grid"></div>
@@ -227,6 +239,20 @@ async function run(name){
     }).catch(()=>{$("err").textContent="Could not reach the local server."});
   }
 }
+
+$("go").addEventListener("click",async()=>{
+  const seeds=[...new Set($("seeds").value.toLowerCase().split(/[\s,]+/).map(w=>w.replace(/[^a-z0-9-]/g,"")).filter(Boolean))];
+  const pre=["get","try","use","hey","meet","go"],suf=["hq","app","hub","labs","ly","io"];
+  let names=[];for(const w of seeds){names.push(w);if($("pre").checked)pre.forEach(a=>names.push(a+w));if($("suf").checked)suf.forEach(a=>names.push(w+a))}
+  names=[...new Set(names)];const tlds=$("tlds").value.replace(/\s/g,"")||"com";
+  if(!names.length){$("prog").textContent="Add at least one base word.";return}
+  $("found").innerHTML="";let done=0,hits=0,i=0;
+  const step=async()=>{while(i<names.length){const n=names[i++];
+    try{const d=await (await fetch(`${BASE}api/check?name=${encodeURIComponent(n)}&kind=domains&tlds=${tlds}`)).json();
+      (d.results||[]).filter(r=>r.state==="available").forEach(r=>{hits++;$("found").insertAdjacentHTML("beforeend",`<a class="row" href="${r.url}" target="_blank" rel="noopener"><b>${r.label}</b><span class="available">available</span></a>`)})}catch(e){}
+    done++;$("prog").textContent=`Checked ${done} of ${names.length} names, ${hits} available domains found`}};
+  await Promise.all([step(),step(),step(),step()]);$("prog").textContent+=" (done)";
+});
 $("f").addEventListener("submit",e=>{e.preventDefault();run($("q").value)});
 $("variants").addEventListener("click",e=>{if(e.target.dataset.v)run(e.target.dataset.v)});
 </script></main></body></html>
