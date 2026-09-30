@@ -93,9 +93,24 @@ def bluesky_rule(status, body):
     return "unknown"
 
 
+def instagram_rule(status, body):
+    # Same public endpoint the website calls for a profile page. Blocked or
+    # rate-limited responses fall back to a manual check instead of guessing.
+    if status == 404:
+        return "available"
+    if status == 200 and '"username"' in body:
+        return "taken"
+    return "manual"
+
+
+EXTRA_HEADERS = {"Instagram": {"X-IG-App-ID": "936619743392459"}}
+
+
 # name, profile URL, probe URL, rule. Rule None means manual check only.
 SOCIAL = [
-    ("Instagram", "https://www.instagram.com/{n}/", None, None),
+    ("Instagram", "https://www.instagram.com/{n}/",
+     "https://www.instagram.com/api/v1/users/web_profile_info/?username={n}", instagram_rule),
+    ("Gmail (@gmail.com)", "https://accounts.google.com/signup", None, None),
     ("TikTok", "https://www.tiktok.com/@{n}", "https://www.tiktok.com/@{n}", tiktok_rule),
     ("YouTube", "https://www.youtube.com/@{n}", "https://www.youtube.com/@{n}", lambda s, b: by_status()(s, b)),
     ("Discord", "https://discord.com/users/{n}", "discord", None),
@@ -117,7 +132,7 @@ def check_social(name, spec):
     elif probe is None:
         state = "manual"
     else:
-        status, body = fetch(probe.format(n=name))
+        status, body = fetch(probe.format(n=name), headers=EXTRA_HEADERS.get(label))
         state = rule(status, body)
     return {"label": label, "state": state, "url": url}
 
@@ -217,6 +232,8 @@ $("variants").addEventListener("click",e=>{if(e.target.dataset.v)run(e.target.da
 """
 
 if __name__ == "__main__":
-    port = 8000
-    print(f"namecheck running at http://localhost:{port}  (Ctrl+C to stop)")
-    ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+    import os
+    port = int(os.environ.get("PORT", 8000))
+    host = "0.0.0.0" if "PORT" in os.environ else "127.0.0.1"  # public only when a host sets PORT
+    print(f"namecheck running on {host}:{port}  (Ctrl+C to stop)")
+    ThreadingHTTPServer((host, port), Handler).serve_forever()
