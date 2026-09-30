@@ -209,7 +209,9 @@ textarea{width:100%;margin-top:10px;font:inherit;padding:10px;border:1px solid v
 <form id="f"><textarea id="q" rows="1" placeholder="selfishidiot (or paste many: one per line or comma-separated)" autocomplete="off" autofocus aria-label="Names to check"></textarea><button>Check</button></form>
 <details id="bulk"><summary>Bulk finder: generate and filter many names</summary>
  <textarea id="seeds" rows="4" placeholder="One base word per line, e.g. cairn, detour, gleam, whylo"></textarea>
- <div class="opts"><label>TLDs <input id="tlds" value="com"></label>
+ <textarea id="seeds2" rows="3" placeholder="Optional second list: every word above is combined with every word here (e.g. board, pause, note)"></textarea>
+ <label style="font-size:14px"><input type="checkbox" id="both" checked> combine in both orders (board+pause and pause+board)</label>
+ <div class="opts"><label>TLDs <input id="tlds" value="com,app,co,io,ink"></label>
  <label><input type="checkbox" id="pre" checked> prefixes (get, try, use, hey, meet, go)</label>
  <label><input type="checkbox" id="suf" checked> suffixes (hq, app, hub, labs, ly, io)</label>
  <button type="button" id="go">Find available</button></div>
@@ -241,9 +243,10 @@ async function run(name){
 }
 
 const parseWords=t=>[...new Set(t.toLowerCase().split(/[\s,;]+/).map(w=>w.replace(/^@/,"").replace(/[^a-z0-9-]/g,"")).filter(Boolean))];
-async function runBulk(seeds,usePre,useSuf){
+async function runBulk(seeds,usePre,useSuf,seconds=[],both=true){
   const pre=["get","try","use","hey","meet","go"],suf=["hq","app","hub","labs","ly","io"];
   let names=[];for(const w of seeds){names.push(w);if(usePre)pre.forEach(a=>names.push(a+w));if(useSuf)suf.forEach(a=>names.push(w+a))}
+  for(const a of seeds)for(const b of seconds){if(a!==b){names.push(a+b);if(both)names.push(b+a)}}
   names=[...new Set(names)];const tlds=$("tlds").value.replace(/\s/g,"")||"com";
   if(!names.length){$("prog").textContent="Add at least one base word.";return}
   $("bulk").open=true;$("found").innerHTML="";let done=0,hits=0,i=0;
@@ -253,7 +256,7 @@ async function runBulk(seeds,usePre,useSuf){
     done++;$("prog").textContent=`Checked ${done} of ${names.length} names, ${hits} available domains found`}};
   await Promise.all([step(),step(),step(),step()]);$("prog").textContent+=" (done)";
 }
-$("go").addEventListener("click",()=>runBulk(parseWords($("seeds").value),$("pre").checked,$("suf").checked));
+$("go").addEventListener("click",()=>runBulk(parseWords($("seeds").value),$("pre").checked,$("suf").checked,parseWords($("seeds2").value),$("both").checked));
 $("q").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();$("f").requestSubmit()}});
 $("f").addEventListener("submit",e=>{e.preventDefault();const w=parseWords($("q").value);
   if(w.length>1){$("seeds").value=w.join("\n");$("out").hidden=true;runBulk(w,false,false)}else if(w.length){run(w[0])}});
